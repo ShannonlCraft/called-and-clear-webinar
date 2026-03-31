@@ -451,7 +451,7 @@
     flex: 1;
     position: relative;
     background: #0a0a0a;
-    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
     min-height: 320px;
   }
 
@@ -965,18 +965,59 @@ function applyAdminContent() {
   if (offerSpan)   offerSpan.textContent   = CONFIG.offerSubtext;
   if (offerBtn)    { offerBtn.textContent  = CONFIG.offerBtnText; offerBtn.href = CONFIG.paymentLink; }
 
-  // Video embed — if a YouTube ID is set, replace placeholder with iframe
+  // Video embed — YouTube IFrame API for guaranteed autoplay + countdown sync
   if (CONFIG.videoId) {
     const placeholder = document.querySelector('.video-placeholder');
     if (placeholder) {
-      const iframe = document.createElement('iframe');
-      iframe.src = 'https://www.youtube.com/embed/' + CONFIG.videoId + '?autoplay=1&rel=0';
-      iframe.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:none;';
-      iframe.allow = 'autoplay; fullscreen';
-      iframe.allowFullscreen = true;
       const wrap = placeholder.closest('.video-wrap') || placeholder.parentElement;
       wrap.style.position = 'relative';
-      placeholder.replaceWith(iframe);
+      wrap.style.overflow = 'hidden';
+
+      // Create the player container div
+      const playerDiv = document.createElement('div');
+      playerDiv.id = 'yt-player';
+      playerDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+      placeholder.replaceWith(playerDiv);
+
+      // Transparent overlay blocks all viewer interaction (no pause, no seek)
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;';
+      wrap.appendChild(overlay);
+
+      // Load the YouTube IFrame API
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+
+      let _playerStarted = false;
+      window.onYouTubeIframeAPIReady = function() {
+        const player = new YT.Player('yt-player', {
+          videoId: CONFIG.videoId,
+          playerVars: {
+            autoplay: 1,
+            mute: 1,         // muted start = guaranteed autoplay in all browsers
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            iv_load_policy: 3,
+            modestbranding: 1,
+            rel: 0,
+            playsinline: 1,
+          },
+          events: {
+            onReady: function(e) { e.target.playVideo(); },
+            onStateChange: function(e) {
+              if (e.data === YT.PlayerState.PLAYING && !_playerStarted) {
+                _playerStarted = true;
+                e.target.unMute();          // unmute the instant it's playing
+                e.target.setVolume(100);
+                roomStartTime = Date.now(); // offer countdown starts NOW
+                roomSeconds = 0;
+              }
+            }
+          }
+        });
+      };
     }
   }
 }
@@ -1228,7 +1269,7 @@ let attendeeInterval;
 let roomSeconds = 0;
 
 function startWebinarRoom() {
-  roomStartTime = Date.now();
+  roomStartTime = null; // set by video onStateChange when playback actually begins
 
   // Update offer link
   document.querySelector('.btn-offer').href = CONFIG.paymentLink;
@@ -1245,8 +1286,9 @@ function startWebinarRoom() {
     document.getElementById('chat-count').textContent = count + ' in session';
   }, 8000);
 
-  // Main room tick
+  // Main room tick — waits for video to start before counting
   roomInterval = setInterval(() => {
+    if (!roomStartTime) return; // hold until video is actually playing
     roomSeconds = Math.floor((Date.now() - roomStartTime) / 1000);
 
     // Drip in chat messages
