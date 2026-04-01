@@ -454,6 +454,14 @@
     overflow: hidden;
     min-height: 320px;
   }
+  /* Force YouTube IFrame API iframe to fill the container */
+  #yt-player, #yt-player iframe {
+    position: absolute !important;
+    top: 0 !important; left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border: none !important;
+  }
 
   /* ── SWAP IN YOUR VIDEO: replace .video-placeholder with an <iframe> ── */
   .video-placeholder {
@@ -992,10 +1000,12 @@ function applyAdminContent() {
       let _playerStarted = false;
       window.onYouTubeIframeAPIReady = function() {
         const player = new YT.Player('yt-player', {
+          width: '100%',
+          height: '100%',
           videoId: CONFIG.videoId,
           playerVars: {
             autoplay: 1,
-            mute: 1,         // muted start = guaranteed autoplay in all browsers
+            mute: 0,         // unmuted — works for real users who clicked to enter
             controls: 0,
             disablekb: 1,
             fs: 0,
@@ -1009,10 +1019,16 @@ function applyAdminContent() {
             onStateChange: function(e) {
               if (e.data === YT.PlayerState.PLAYING && !_playerStarted) {
                 _playerStarted = true;
-                e.target.unMute();          // unmute the instant it's playing
-                e.target.setVolume(100);
                 roomStartTime = Date.now(); // offer countdown starts NOW
                 roomSeconds = 0;
+                // If browser forced muted playback, show a small unmute prompt
+                if (e.target.isMuted()) {
+                  const btn = document.createElement('div');
+                  btn.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#fff;padding:10px 22px;border-radius:8px;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:700;z-index:20;letter-spacing:0.3px;';
+                  btn.textContent = '🔊 Click to unmute';
+                  btn.onclick = function() { e.target.unMute(); e.target.setVolume(100); btn.remove(); };
+                  wrap.appendChild(btn);
+                }
               }
             }
           }
