@@ -420,37 +420,37 @@ input[type=range] {
     <!-- SIDEBAR -->
     <div class="sidebar">
       <div class="nav-section">Webinar</div>
-      <div class="nav-item active" onclick="showPanel('video')">
+      <div class="nav-item active" onclick="showPanel('video', this)">
         <span class="nav-icon">🎬</span> Video
       </div>
-      <div class="nav-item" onclick="showPanel('slots')">
+      <div class="nav-item" onclick="showPanel('slots', this)">
         <span class="nav-icon">⏰</span> Time Slots
       </div>
-      <div class="nav-item" onclick="showPanel('chat')">
+      <div class="nav-item" onclick="showPanel('chat', this)">
         <span class="nav-icon">💬</span> Live Chat
       </div>
-      <div class="nav-item" onclick="showPanel('offer')">
+      <div class="nav-item" onclick="showPanel('offer', this)">
         <span class="nav-icon">💰</span> Offer & Purchase
       </div>
 
       <div class="nav-section">Pages</div>
-      <div class="nav-item" onclick="showPanel('reg')">
+      <div class="nav-item" onclick="showPanel('reg', this)">
         <span class="nav-icon">📝</span> Registration
       </div>
-      <div class="nav-item" onclick="showPanel('wait')">
+      <div class="nav-item" onclick="showPanel('wait', this)">
         <span class="nav-icon">⏳</span> Waiting Room
       </div>
 
       <div class="nav-section">Design</div>
-      <div class="nav-item" onclick="showPanel('colors')">
+      <div class="nav-item" onclick="showPanel('colors', this)">
         <span class="nav-icon">🎨</span> Colors & Theme
       </div>
 
       <div class="nav-section">Tools</div>
-      <div class="nav-item" onclick="showPanel('preview')">
+      <div class="nav-item" onclick="showPanel('preview', this)">
         <span class="nav-icon">👁</span> Preview
       </div>
-      <div class="nav-item" onclick="showPanel('funnel')">
+      <div class="nav-item" onclick="showPanel('funnel', this)">
         <span class="nav-icon">🔗</span> Full Funnel
       </div>
     </div>
@@ -976,12 +976,12 @@ input[type=range] {
 // ════════════════════════════════════════
 const PASSWORD = 'calledandclear';   // ← change this to whatever you want
 
-function doLogin() {
+async function doLogin() {
   const pw = document.getElementById('pw-input').value;
   if (pw === PASSWORD) {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    loadSettings();
+    await loadSettings();
     renderMsgList();
     renderBullets();
     renderTips();
@@ -993,11 +993,11 @@ function doLogin() {
 // ════════════════════════════════════════
 //  NAVIGATION
 // ════════════════════════════════════════
-function showPanel(name) {
+function showPanel(name, el) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
-  event.currentTarget.classList.add('active');
+  if (el) el.classList.add('active');
 }
 
 // ════════════════════════════════════════
@@ -1127,16 +1127,56 @@ function deleteTip(i) { tips.splice(i,1); renderTips(); }
 // ════════════════════════════════════════
 //  SAVE / LOAD (localStorage)
 // ════════════════════════════════════════
+function numberValue(id, fallback, min, max) {
+  const n = Number(document.getElementById(id).value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function cleanVideoId(value) {
+  const id = String(value || '').trim();
+  const watchMatch = id.match(/[?&]v=([^&]+)/);
+  const shortMatch = id.match(/youtu\.be\/([^?&]+)/);
+  const embedMatch = id.match(/embed\/([^?&]+)/);
+  return (watchMatch && watchMatch[1]) || (shortMatch && shortMatch[1]) || (embedMatch && embedMatch[1]) || id;
+}
+
+function cleanList(list) {
+  return list.map(item => String(item || '').trim()).filter(Boolean);
+}
+
+function cleanMsgs(list) {
+  return list.map(item => ({
+    sec: Math.max(0, Number(item.sec) || 0),
+    user: String(item.user || 'Guest').trim() || 'Guest',
+    msg: String(item.msg || '').trim(),
+  })).filter(item => item.msg).sort((a, b) => a.sec - b.sec);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...(options || {}), signal: controller.signal });
+    if (!response.ok) throw new Error('Request failed');
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function saveAll() {
+  const attendeeMin = numberValue('attendeeMin', 290, 0, 100000);
+  const attendeeMax = Math.max(attendeeMin, numberValue('attendeeMax', 380, 0, 100000));
   const cfg = {
-    videoId:        document.getElementById('videoId').value.trim(),
-    offerMinutes:   +document.getElementById('offerMinutes').value,
-    slot1min:       +document.getElementById('slot1min').value,
-    slot2min:       +document.getElementById('slot2min').value,
+    videoId:        cleanVideoId(document.getElementById('videoId').value),
+    offerMinutes:   numberValue('offerMinutes', 45, 0, 600),
+    slot1min:       numberValue('slot1min', 12, 0, 1440),
+    slot2min:       numberValue('slot2min', 37, 0, 1440),
     showSlot3:      document.getElementById('toggle-slot3').classList.contains('on'),
     showSlot4:      document.getElementById('toggle-slot4').classList.contains('on'),
-    attendeeMin:    +document.getElementById('attendeeMin').value,
-    attendeeMax:    +document.getElementById('attendeeMax').value,
+    attendeeMin,
+    attendeeMax,
     paymentLink:    document.getElementById('paymentLink').value.trim(),
     courseUrl:      document.getElementById('courseUrl').value.trim(),
     webhookUrl:     document.getElementById('webhookUrl').value.trim(),
@@ -1149,18 +1189,26 @@ function saveAll() {
     regSub:         document.getElementById('regSub').value,
     socialProof:    document.getElementById('socialProof').value,
     defaultTheme:   document.getElementById('toggle-dark-mode').classList.contains('on') ? 'dark' : 'light',
-    msgs, bullets, tips,
+    msgs: cleanMsgs(msgs),
+    bullets: cleanList(bullets),
+    tips: cleanList(tips),
     colors: getColors(),
   };
+  msgs = cfg.msgs;
+  bullets = cfg.bullets;
+  tips = cfg.tips;
+  document.getElementById('videoId').value = cfg.videoId;
+  document.getElementById('attendeeMin').value = cfg.attendeeMin;
+  document.getElementById('attendeeMax').value = cfg.attendeeMax;
   localStorage.setItem('cc_webinar_config', JSON.stringify(cfg));
 
   // Push to Firebase so the public webinar page updates immediately
   const DB_URL = 'https://called-and-clear-webinar-default-rtdb.firebaseio.com/config.json';
-  fetch(DB_URL, {
+  fetchWithTimeout(DB_URL, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cfg),
-  }).then(() => {
+  }, 5000).then(() => {
     const c = document.getElementById('save-confirm');
     c.textContent = '✓ Saved & live!';
     c.style.opacity = '1';
@@ -1177,12 +1225,16 @@ function saveAll() {
 async function loadSettings() {
   let cfg = {};
   try {
-    const r    = await fetch('https://called-and-clear-webinar-default-rtdb.firebaseio.com/config.json');
+    const r    = await fetchWithTimeout('https://called-and-clear-webinar-default-rtdb.firebaseio.com/config.json', null, 4000);
     const data = await r.json();
     if (data && typeof data === 'object') cfg = data;
-  } catch(e) {
+  } catch(e) {}
+
+  if (!Object.keys(cfg).length) {
+    try {
     const raw = localStorage.getItem('cc_webinar_config');
     if (raw) cfg = JSON.parse(raw);
+    } catch(e) {}
   }
   if (!Object.keys(cfg).length) return;
   if (cfg.videoId)       { document.getElementById('videoId').value = cfg.videoId; updateVideoPreview(); }
@@ -1262,7 +1314,8 @@ function getColors() {
   const c = {};
   COLOR_KEYS.forEach(k => {
     const hx = document.getElementById('hex-' + k);
-    c[k] = hx ? hx.value : PRESETS['dark-orange'][k];
+    const value = hx ? hx.value.trim() : '';
+    c[k] = /^#[0-9A-Fa-f]{6}$/.test(value) ? value : PRESETS['dark-orange'][k];
   });
   return c;
 }
@@ -1306,7 +1359,9 @@ function loadColors(cfg) {
   });
   updatePreview();
 }
-function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 function updateVideoPreview() {
   const id = document.getElementById('videoId').value.trim();
   const wrap = document.getElementById('video-preview-link');

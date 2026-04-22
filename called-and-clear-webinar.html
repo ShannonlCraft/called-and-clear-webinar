@@ -856,30 +856,128 @@
 // _SAVED and CONFIG start empty — populated from Firebase before page reveals
 let _SAVED = {};
 
-let CONFIG = {
-  videoId:            _SAVED.videoId            || '',
-  waitMinutes:        _SAVED.slot1min           || 15,
-  offerAppearSeconds: (_SAVED.offerMinutes || 45) * 60,
-  attendeeMin:        _SAVED.attendeeMin        || 290,
-  attendeeMax:        _SAVED.attendeeMax        || 380,
-  paymentLink:        _SAVED.paymentLink        || '#',
-  offerHeadline:      _SAVED.offerHeadline      || '🔥 Called & Clear is now open for enrollment!',
-  offerSubtext:       _SAVED.offerSubtext       || 'Special pricing available for training attendees only — don\'t wait.',
-  offerBtnText:       _SAVED.offerBtnText       || 'Enroll Now →',
-  slot1min:           _SAVED.slot1min           || 12,
-  slot2min:           _SAVED.slot2min           || 37,
-  showSlot3:          _SAVED.showSlot3          !== false,
-  showSlot4:          _SAVED.showSlot4          !== false,
-  socialProof:        _SAVED.socialProof        || '214 people registered this week',
-  regH1a:             _SAVED.regH1a             || 'Discover Your Calling',
-  regH1b:             _SAVED.regH1b             || 'and Walk in It with Clarity',
-  regSub:             _SAVED.regSub             || 'A free live training for believers who know God has more for them but feel stuck between their calling and their everyday life.',
-  bullets:            _SAVED.bullets            || null,
-  tips:               _SAVED.tips               || null,
-  webhookUrl:         _SAVED.webhookUrl         || '',
-  courseUrl:          _SAVED.courseUrl          || '',
-  analyticsId:        _SAVED.analyticsId        || '',
-};
+const DEFAULT_BULLETS = [
+  "Why you feel called but confused — and what to do about it",
+  "The one mindset shift that moves you from performance to purpose",
+  "How to hear God clearly and take confident next steps",
+  "A simple framework to align your life with what you were made for",
+];
+
+const DEFAULT_TIPS = [
+  "Find a quiet spot where you can focus for about 60 minutes",
+  "Have a notebook nearby — you'll want to write things down",
+  "Come with an open heart and a willingness to go deeper",
+  "Invite a friend who needs this too — forward them the link",
+];
+
+const DEFAULT_CHAT = [
+  { sec: 8,   user: 'Michelle T.',  msg: 'So excited for this.' },
+  { sec: 22,  user: 'Priya R.',     msg: 'Hi everyone. Joining from Texas' },
+  { sec: 45,  user: 'Keisha M.',    msg: 'Can everyone see the screen ok?' },
+  { sec: 60,  user: 'Dana W.',      msg: 'Yes looks great.' },
+  { sec: 90,  user: 'Amber L.',     msg: 'I have been waiting for this.' },
+  { sec: 130, user: 'Tara B.',      msg: 'This is already speaking to me' },
+  { sec: 180, user: 'Jennifer S.',  msg: 'The part about performance mode. That is me.' },
+  { sec: 240, user: 'Michelle T.',  msg: 'Can you say that again? I need to write that down' },
+  { sec: 300, user: 'Priya R.',     msg: 'This is hitting home.' },
+  { sec: 360, user: 'Keisha M.',    msg: 'This is exactly what I needed to hear today' },
+  { sec: 420, user: 'Dana W.',      msg: 'I have been stuck in this for 3 years and did not even know it' },
+  { sec: 490, user: 'Amber L.',     msg: 'Sending this to my sister right now' },
+  { sec: 560, user: 'Tara B.',      msg: 'Shannon you are so good at explaining this' },
+  { sec: 640, user: 'Jennifer S.',  msg: 'The clarity framework is really helpful' },
+  { sec: 720, user: 'Michelle T.',  msg: 'I signed up not knowing what to expect and this is so good' },
+  { sec: 810, user: 'Priya R.',     msg: 'God led me to this webinar at the right time' },
+  { sec: 900, user: 'Keisha M.',    msg: 'Is the course still open after this?' },
+  { sec: 980, user: 'Dana W.',      msg: 'This is the missing piece I have been looking for' },
+  { sec: 1060,user: 'Amber L.',     msg: 'Where do I sign up?' },
+  { sec: 1150,user: 'Tara B.',      msg: 'Thank you Shannon' },
+  { sec: 1240,user: 'Jennifer S.',  msg: 'Shannon I have followed you for 2 years and this is your best work' },
+  { sec: 1330,user: 'Michelle T.',  msg: 'I needed this more than I knew' },
+  { sec: 1420,user: 'Priya R.',     msg: 'Dropping the link for my friend who needs this' },
+  { sec: 1520,user: 'Keisha M.',    msg: 'How do I enroll in the course?' },
+  { sec: 1620,user: 'Dana W.',      msg: 'Just enrolled. So excited.' },
+  { sec: 1700,user: 'Amber L.',     msg: 'Me too. See you inside the course.' },
+  { sec: 1780,user: 'Tara B.',      msg: 'Best decision I have made in a long time' },
+  { sec: 1860,user: 'Jennifer S.',  msg: 'Thank you Shannon. This changed everything for me.' },
+];
+
+let CONFIG = buildConfig(_SAVED);
+
+function textValue(value, fallback) {
+  const text = value == null ? '' : String(value).trim();
+  return text || fallback;
+}
+
+function numberValue(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function cleanList(list, fallback) {
+  const source = Array.isArray(list) ? list : fallback;
+  return source.map(item => String(item || '').trim()).filter(Boolean);
+}
+
+function cleanMessages(list, fallback) {
+  const source = Array.isArray(list) && list.length ? list : fallback;
+  return source.map(item => ({
+    sec: numberValue(item.sec, 0, 0, 86400),
+    user: textValue(item.user, 'Guest'),
+    msg: textValue(item.msg, ''),
+    color: /^#[0-9A-Fa-f]{6}$/.test(item.color || '') ? item.color : null,
+  })).filter(item => item.msg).sort((a, b) => a.sec - b.sec);
+}
+
+function cleanUrl(value, fallback) {
+  const url = String(value || '').trim();
+  if (!url) return fallback;
+  try {
+    const parsed = new URL(url, window.location.href);
+    return ['http:', 'https:', 'mailto:'].includes(parsed.protocol) ? parsed.href : fallback;
+  } catch(e) {
+    return fallback;
+  }
+}
+
+function cleanVideoId(value) {
+  const id = String(value || '').trim();
+  const watchMatch = id.match(/[?&]v=([^&]+)/);
+  const shortMatch = id.match(/youtu\.be\/([^?&]+)/);
+  const embedMatch = id.match(/embed\/([^?&]+)/);
+  return (watchMatch && watchMatch[1]) || (shortMatch && shortMatch[1]) || (embedMatch && embedMatch[1]) || id;
+}
+
+function buildConfig(saved) {
+  const cfg = saved && typeof saved === 'object' ? saved : {};
+  const attendeeMin = numberValue(cfg.attendeeMin, 290, 0, 100000);
+  const attendeeMax = Math.max(attendeeMin, numberValue(cfg.attendeeMax, 380, 0, 100000));
+  return {
+    videoId:            cleanVideoId(cfg.videoId),
+    waitMinutes:        numberValue(cfg.slot1min, 15, 0, 1440),
+    offerAppearSeconds: numberValue(cfg.offerMinutes, 45, 0, 600) * 60,
+    attendeeMin,
+    attendeeMax,
+    paymentLink:        cleanUrl(cfg.paymentLink, '#'),
+    offerHeadline:      textValue(cfg.offerHeadline, 'Called & Clear is now open for enrollment.'),
+    offerSubtext:       textValue(cfg.offerSubtext, 'Special pricing is available for training attendees only.'),
+    offerBtnText:       textValue(cfg.offerBtnText, 'Enroll Now'),
+    slot1min:           numberValue(cfg.slot1min, 12, 0, 1440),
+    slot2min:           numberValue(cfg.slot2min, 37, 0, 1440),
+    showSlot3:          cfg.showSlot3 !== false,
+    showSlot4:          cfg.showSlot4 !== false,
+    socialProof:        textValue(cfg.socialProof, '214 people registered this week'),
+    regH1a:             textValue(cfg.regH1a, 'Discover Your Calling'),
+    regH1b:             textValue(cfg.regH1b, 'and Walk in It with Clarity'),
+    regSub:             textValue(cfg.regSub, 'A free live training for believers who know God has more for them but feel stuck between their calling and their everyday life.'),
+    bullets:            cleanList(cfg.bullets, DEFAULT_BULLETS),
+    tips:               cleanList(cfg.tips, DEFAULT_TIPS),
+    msgs:               cleanMessages(cfg.msgs, DEFAULT_CHAT),
+    webhookUrl:         cleanUrl(cfg.webhookUrl, ''),
+    courseUrl:          cleanUrl(cfg.courseUrl, ''),
+    analyticsId:        String(cfg.analyticsId || '').trim(),
+  };
+}
 
 // ═══════════════════════════════════════
 //  GOOGLE ANALYTICS (if ID is set)
@@ -901,8 +999,13 @@ function initAnalytics() {
 //  APPLY SAVED COLORS FROM ADMIN
 // ═══════════════════════════════════════
 function applyAdminColors() {
-  const c = _SAVED.colors;
-  if (!c) return;
+  const saved = _SAVED.colors;
+  if (!saved) return;
+  const isHex = value => /^#[0-9A-Fa-f]{6}$/.test(value || '');
+  const c = {};
+  ['orange','bg','card','inner','text','muted','em','btntext'].forEach(key => {
+    if (isHex(saved[key])) c[key] = saved[key];
+  });
   const root = document.documentElement.style;
   if (c.orange) { root.setProperty('--orange', c.orange); root.setProperty('--orange2', shadeColor(c.orange, -15)); }
   if (c.bg)     root.setProperty('--dark',   c.bg);
@@ -936,9 +1039,15 @@ function applyAdminContent() {
   const h1 = document.querySelector('.reg-h1');
   if (h1) {
     const words = CONFIG.regH1b.trim().split(/\s+/);
-    const lastWord = words.pop();
+    const lastWord = words.pop() || '';
     const prefix = words.join(' ');
-    h1.innerHTML = CONFIG.regH1a + '<br>' + (prefix ? prefix + ' ' : '') + '<em>' + lastWord + '</em>';
+    h1.textContent = '';
+    h1.append(document.createTextNode(CONFIG.regH1a));
+    h1.appendChild(document.createElement('br'));
+    if (prefix) h1.append(document.createTextNode(prefix + ' '));
+    const em = document.createElement('em');
+    em.textContent = lastWord;
+    h1.appendChild(em);
   }
 
   // Subheadline
@@ -949,7 +1058,12 @@ function applyAdminContent() {
   if (CONFIG.bullets) {
     const ul = document.querySelector('.promises');
     if (ul) {
-      ul.innerHTML = CONFIG.bullets.map(b => `<li>${b}</li>`).join('');
+      ul.textContent = '';
+      CONFIG.bullets.forEach(b => {
+        const li = document.createElement('li');
+        li.textContent = b;
+        ul.appendChild(li);
+      });
     }
   }
 
@@ -961,7 +1075,12 @@ function applyAdminContent() {
   if (CONFIG.tips) {
     const tipUl = document.querySelector('.wait-tip ul');
     if (tipUl) {
-      tipUl.innerHTML = CONFIG.tips.map(t => `<li>${t}</li>`).join('');
+      tipUl.textContent = '';
+      CONFIG.tips.forEach(t => {
+        const li = document.createElement('li');
+        li.textContent = t;
+        tipUl.appendChild(li);
+      });
     }
   }
 
@@ -973,69 +1092,6 @@ function applyAdminContent() {
   if (offerSpan)   offerSpan.textContent   = CONFIG.offerSubtext;
   if (offerBtn)    { offerBtn.textContent  = CONFIG.offerBtnText; offerBtn.href = CONFIG.paymentLink; }
 
-  // Video embed — YouTube IFrame API for guaranteed autoplay + countdown sync
-  if (CONFIG.videoId) {
-    const placeholder = document.querySelector('.video-placeholder');
-    if (placeholder) {
-      const wrap = placeholder.closest('.video-wrap') || placeholder.parentElement;
-      wrap.style.position = 'relative';
-      wrap.style.overflow = 'hidden';
-
-      // Create the player container div
-      const playerDiv = document.createElement('div');
-      playerDiv.id = 'yt-player';
-      playerDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
-      placeholder.replaceWith(playerDiv);
-
-      // Transparent overlay blocks all viewer interaction (no pause, no seek)
-      const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;';
-      wrap.appendChild(overlay);
-
-      // Load the YouTube IFrame API
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      document.head.appendChild(tag);
-
-      let _playerStarted = false;
-      window.onYouTubeIframeAPIReady = function() {
-        const player = new YT.Player('yt-player', {
-          width: '100%',
-          height: '100%',
-          videoId: CONFIG.videoId,
-          playerVars: {
-            autoplay: 1,
-            mute: 0,         // unmuted — works for real users who clicked to enter
-            controls: 0,
-            disablekb: 1,
-            fs: 0,
-            iv_load_policy: 3,
-            modestbranding: 1,
-            rel: 0,
-            playsinline: 1,
-          },
-          events: {
-            onReady: function(e) { e.target.playVideo(); },
-            onStateChange: function(e) {
-              if (e.data === YT.PlayerState.PLAYING && !_playerStarted) {
-                _playerStarted = true;
-                roomStartTime = Date.now(); // offer countdown starts NOW
-                roomSeconds = 0;
-                // If browser forced muted playback, show a small unmute prompt
-                if (e.target.isMuted()) {
-                  const btn = document.createElement('div');
-                  btn.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#fff;padding:10px 22px;border-radius:8px;cursor:pointer;font-family:sans-serif;font-size:14px;font-weight:700;z-index:20;letter-spacing:0.3px;';
-                  btn.textContent = '🔊 Click to unmute';
-                  btn.onclick = function() { e.target.unMute(); e.target.setVolume(100); btn.remove(); };
-                  wrap.appendChild(btn);
-                }
-              }
-            }
-          }
-        });
-      };
-    }
-  }
 }
 
 // ═══════════════════════════════════════
@@ -1231,52 +1287,20 @@ function enterRoom() {
 // ─────────────────────────────────────────────────────────
 const _CHAT_COLORS = ['#8b5cf6','#ec4899','#14b8a6','#f59e0b','#3b82f6','#ef4444','#22c55e','#f97316'];
 
-const _DEFAULT_CHAT = [
-  { sec: 8,   user: 'Michelle T.',  msg: 'So excited for this! 🙏' },
-  { sec: 22,  user: 'Priya R.',     msg: 'Hi everyone! Joining from Texas' },
-  { sec: 45,  user: 'Keisha M.',    msg: 'Can everyone see the screen ok?' },
-  { sec: 60,  user: 'Dana W.',      msg: 'Yes looks great!' },
-  { sec: 90,  user: 'Amber L.',     msg: 'Shannon!! I\'ve been waiting for this 😭' },
-  { sec: 130, user: 'Tara B.',      msg: 'This is already speaking to me' },
-  { sec: 180, user: 'Jennifer S.',  msg: 'The part about performance mode — YES. That is me.' },
-  { sec: 240, user: 'Michelle T.',  msg: 'Can you say that again? I need to write that down' },
-  { sec: 300, user: 'Priya R.',     msg: 'I have chills right now 🔥' },
-  { sec: 360, user: 'Keisha M.',    msg: 'This is exactly what I needed to hear today' },
-  { sec: 420, user: 'Dana W.',      msg: 'I\'ve been stuck in this for 3 years and didn\'t even know it' },
-  { sec: 490, user: 'Amber L.',     msg: 'Sending this to my sister right now' },
-  { sec: 560, user: 'Tara B.',      msg: 'Shannon you are so good at explaining this' },
-  { sec: 640, user: 'Jennifer S.',  msg: 'The clarity framework is 🤯' },
-  { sec: 720, user: 'Michelle T.',  msg: 'I signed up not knowing what to expect and I\'m blown away' },
-  { sec: 810, user: 'Priya R.',     msg: 'God led me to this webinar at the right time' },
-  { sec: 900, user: 'Keisha M.',    msg: 'Is the course still open after this?' },
-  { sec: 980, user: 'Dana W.',      msg: 'This is the missing piece I\'ve been looking for' },
-  { sec: 1060,user: 'Amber L.',     msg: 'Where do I sign up 😭😭' },
-  { sec: 1150,user: 'Tara B.',      msg: 'I\'m literally crying. Thank you Shannon' },
-  { sec: 1240,user: 'Jennifer S.',  msg: 'Shannon I\'ve followed you for 2 years and this is your best work' },
-  { sec: 1330,user: 'Michelle T.',  msg: 'I needed this more than I knew 🙏' },
-  { sec: 1420,user: 'Priya R.',     msg: 'Dropping the link for my friend who NEEDS this 🔥' },
-  { sec: 1520,user: 'Keisha M.',    msg: 'How do I enroll in the course??' },
-  { sec: 1620,user: 'Dana W.',      msg: 'Just enrolled!! So excited 🎉' },
-  { sec: 1700,user: 'Amber L.',     msg: 'Me too!! See you inside the course!' },
-  { sec: 1780,user: 'Tara B.',      msg: 'Best decision I\'ve made in a long time' },
-  { sec: 1860,user: 'Jennifer S.',  msg: 'Thank you Shannon!! This changed everything for me 💛' },
-];
-
-// Use admin-saved messages if they exist, otherwise use defaults
-const _rawChat = (_SAVED.msgs && _SAVED.msgs.length > 0) ? _SAVED.msgs : _DEFAULT_CHAT;
-
 // Auto-assign a consistent color to each unique username
-const CHAT_SCRIPT = (function() {
+function buildChatScript(messages) {
   const colorMap = {};
   let colorIdx = 0;
-  return _rawChat.map(function(m) {
+  return cleanMessages(messages, DEFAULT_CHAT).map(function(m) {
     if (!colorMap[m.user]) {
       colorMap[m.user] = _CHAT_COLORS[colorIdx % _CHAT_COLORS.length];
       colorIdx++;
     }
     return { sec: m.sec, user: m.user, color: m.color || colorMap[m.user], msg: m.msg };
   });
-})();
+}
+
+let CHAT_SCRIPT = buildChatScript(CONFIG.msgs);
 
 let roomStartTime;
 let chatIndex = 0;
@@ -1285,13 +1309,88 @@ let attendeeInterval;
 let roomSeconds = 0;
 
 function startWebinarRoom() {
+  clearInterval(roomInterval);
+  clearInterval(attendeeInterval);
+  chatIndex = 0;
+  document.getElementById('chat-messages').textContent = '';
+  document.getElementById('offer-banner').classList.remove('visible');
   roomStartTime = null; // set by video onStateChange when playback actually begins
+
+  // ── VIDEO PLAYER — created HERE so the user's click gesture allows unmuted autoplay ──
+  if (CONFIG.videoId && !document.getElementById('yt-player')) {
+    const placeholder = document.querySelector('.video-placeholder');
+    if (placeholder) {
+      const wrap = placeholder.closest('.video-wrap') || placeholder.parentElement;
+      wrap.style.position = 'relative';
+      wrap.style.overflow = 'hidden';
+
+      const playerDiv = document.createElement('div');
+      playerDiv.id = 'yt-player';
+      playerDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
+      placeholder.replaceWith(playerDiv);
+
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;';
+      wrap.appendChild(overlay);
+
+      let _playerStarted = false;
+
+      function _createPlayer() {
+        const player = new YT.Player('yt-player', {
+          width: '100%',
+          height: '100%',
+          videoId: CONFIG.videoId,
+          playerVars: {
+            autoplay: 1,
+            mute: 1,          // start muted — guaranteed autoplay, user unmutes below
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            iv_load_policy: 3,
+            modestbranding: 1,
+            rel: 0,
+            playsinline: 1,
+          },
+          events: {
+            onReady: function(e) { e.target.playVideo(); },
+            onStateChange: function(e) {
+              if (e.data === YT.PlayerState.PLAYING && !_playerStarted) {
+                _playerStarted = true;
+                roomStartTime = Date.now();
+                roomSeconds = 0;
+                // Always show unmute button (video starts muted for autoplay reliability)
+                const btn = document.createElement('div');
+                btn.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.82);color:#fff;padding:12px 28px;border-radius:8px;cursor:pointer;font-family:sans-serif;font-size:15px;font-weight:700;z-index:20;letter-spacing:0.3px;box-shadow:0 2px 12px rgba(0,0,0,0.4);';
+                btn.textContent = '🔊 Click to unmute';
+                btn.onclick = function() { e.target.unMute(); e.target.setVolume(100); btn.remove(); };
+                wrap.appendChild(btn);
+              }
+            }
+          }
+        });
+      }
+
+      if (window.YT && window.YT.Player) {
+        _createPlayer();
+      } else {
+        window.onYouTubeIframeAPIReady = _createPlayer;
+        if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+          const tag = document.createElement('script');
+          tag.src = 'https://www.youtube.com/iframe_api';
+          document.head.appendChild(tag);
+        }
+      }
+    }
+  } else {
+    roomStartTime = Date.now();
+  }
 
   // Update offer link
   document.querySelector('.btn-offer').href = CONFIG.paymentLink;
 
   // Attendee counter drift
-  let count = CONFIG.attendeeMin + Math.floor(Math.random() * 50);
+  const countRange = Math.max(1, CONFIG.attendeeMax - CONFIG.attendeeMin + 1);
+  let count = CONFIG.attendeeMin + Math.floor(Math.random() * Math.min(50, countRange));
   document.getElementById('attendee-count').textContent = count + ' watching';
   document.getElementById('chat-count').textContent = count + ' in session';
 
@@ -1325,13 +1424,21 @@ function addChatMessage(msg, isUser) {
   const box = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'msg';
-  div.innerHTML = `
-    <div class="msg-av" style="background:${msg.color || '#6b7280'}">${msg.user[0]}</div>
-    <div class="msg-body">
-      <div class="msg-name sans">${msg.user}</div>
-      <div class="msg-text sans">${msg.msg}</div>
-    </div>
-  `;
+  const av = document.createElement('div');
+  av.className = 'msg-av';
+  av.style.background = /^#[0-9A-Fa-f]{6}$/.test(msg.color || '') ? msg.color : '#6b7280';
+  av.textContent = (msg.user || '?').trim().charAt(0).toUpperCase() || '?';
+
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  const name = document.createElement('div');
+  name.className = 'msg-name sans';
+  name.textContent = msg.user || 'Guest';
+  const text = document.createElement('div');
+  text.className = 'msg-text sans';
+  text.textContent = msg.msg || '';
+  body.append(name, text);
+  div.append(av, body);
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
@@ -1367,13 +1474,15 @@ function showScreen(id) {
 //  that screen directly for testing
 // ═══════════════════════════════════════
 const params = new URLSearchParams(location.search);
-if (params.get('preview') === 'room') {
-  showScreen('screen-room');
-  startWebinarRoom();
-} else if (params.get('preview') === 'wait') {
-  showScreen('screen-wait');
-  const t = new Date(Date.now() + 60000);
-  startWaitRoom(t.getTime(), 'Starting in 1 minute');
+function applyPreviewMode() {
+  if (params.get('preview') === 'room') {
+    showScreen('screen-room');
+    startWebinarRoom();
+  } else if (params.get('preview') === 'wait') {
+    showScreen('screen-wait');
+    const t = new Date(Date.now() + 60000);
+    startWaitRoom(t.getTime(), 'Starting in 1 minute');
+  }
 }
 
 // ═══════════════════════════════════════
@@ -1404,6 +1513,18 @@ function initTheme() {
   }
 }
 
+async function fetchJsonWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...(options || {}), signal: controller.signal });
+    if (!response.ok) throw new Error('Request failed');
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ═══════════════════════════════════════
 //  FIREBASE: FETCH LIVE SETTINGS FROM CLOUD
 //  Runs on page load — pulls config saved
@@ -1411,37 +1532,31 @@ function initTheme() {
 // ═══════════════════════════════════════
 (async function loadFromFirebase() {
   const DB_URL = 'https://called-and-clear-webinar-default-rtdb.firebaseio.com/config.json';
+  let loadedSettings = false;
   try {
-    const r    = await fetch(DB_URL);
-    const data = await r.json();
+    const data = await fetchJsonWithTimeout(DB_URL, null, 4000);
     if (data && typeof data === 'object') {
       _SAVED = data;
-      CONFIG = {
-        videoId:            _SAVED.videoId            || '',
-        waitMinutes:        _SAVED.slot1min           || 15,
-        offerAppearSeconds: (_SAVED.offerMinutes || 45) * 60,
-        attendeeMin:        _SAVED.attendeeMin        || 290,
-        attendeeMax:        _SAVED.attendeeMax        || 380,
-        paymentLink:        _SAVED.paymentLink        || '#',
-        offerHeadline:      _SAVED.offerHeadline      || '🔥 Called & Clear is now open for enrollment!',
-        offerSubtext:       _SAVED.offerSubtext       || 'Special pricing available for training attendees only — don\'t wait.',
-        offerBtnText:       _SAVED.offerBtnText       || 'Enroll Now →',
-        slot1min:           _SAVED.slot1min           || 12,
-        slot2min:           _SAVED.slot2min           || 37,
-        showSlot3:          _SAVED.showSlot3          !== false,
-        showSlot4:          _SAVED.showSlot4          !== false,
-        socialProof:        _SAVED.socialProof        || '214 people registered this week',
-        regH1a:             _SAVED.regH1a             || 'Discover Your Calling',
-        regH1b:             _SAVED.regH1b             || 'and Walk in It with Clarity',
-        regSub:             _SAVED.regSub             || 'A free live training for believers who know God has more for them but feel stuck between their calling and their everyday life.',
-        bullets:            _SAVED.bullets            || null,
-        tips:               _SAVED.tips               || null,
-        webhookUrl:         _SAVED.webhookUrl         || '',
-        courseUrl:          _SAVED.courseUrl          || '',
-        analyticsId:        _SAVED.analyticsId        || '',
-      };
+      CONFIG = buildConfig(_SAVED);
+      CHAT_SCRIPT = buildChatScript(CONFIG.msgs);
+      loadedSettings = true;
     }
-  } catch(e) { /* Firebase unreachable — page uses built-in defaults */ }
+  } catch(e) {
+    /* Local fallback runs below. */
+  }
+
+  if (!loadedSettings) {
+    try {
+      const local = JSON.parse(localStorage.getItem('cc_webinar_config') || '{}');
+      if (local && typeof local === 'object') {
+        _SAVED = local;
+        CONFIG = buildConfig(_SAVED);
+        CHAT_SCRIPT = buildChatScript(CONFIG.msgs);
+      }
+    } catch(err) {
+      /* Page uses built-in defaults if both cloud and local settings are unavailable. */
+    }
+  }
 
   // Apply all settings now that CONFIG is ready
   initAnalytics();
@@ -1449,6 +1564,7 @@ function initTheme() {
   applyAdminContent();
   renderSlots();
   initTheme();
+  applyPreviewMode();
 
   // Remove loading overlay and reveal the page
   const loader = document.getElementById('fb-loader');
