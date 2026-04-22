@@ -521,6 +521,11 @@
     text-decoration: none; display: inline-block;
   }
   .btn-offer:hover { background: var(--orange2); }
+  .btn-offer.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .btn-offer.is-disabled:hover { background: var(--orange); }
 
   /* Sidebar chat */
   .chat-sidebar {
@@ -941,6 +946,29 @@ function cleanUrl(value, fallback) {
   }
 }
 
+function configureOfferButton(button) {
+  if (!button) return;
+  const checkoutUrl = cleanUrl(CONFIG.paymentLink, '');
+  button.textContent = CONFIG.offerBtnText;
+
+  if (checkoutUrl) {
+    button.href = checkoutUrl;
+    button.target = '_blank';
+    button.rel = 'noopener noreferrer';
+    button.classList.remove('is-disabled');
+    button.removeAttribute('aria-disabled');
+    button.removeAttribute('title');
+    return;
+  }
+
+  button.removeAttribute('href');
+  button.removeAttribute('target');
+  button.removeAttribute('rel');
+  button.classList.add('is-disabled');
+  button.setAttribute('aria-disabled', 'true');
+  button.title = 'Checkout link has not been set yet.';
+}
+
 function cleanVideoId(value) {
   const id = String(value || '').trim();
   const watchMatch = id.match(/[?&]v=([^&]+)/);
@@ -959,7 +987,7 @@ function buildConfig(saved) {
     offerAppearSeconds: numberValue(cfg.offerMinutes, 45, 0, 600) * 60,
     attendeeMin,
     attendeeMax,
-    paymentLink:        cleanUrl(cfg.paymentLink, '#'),
+    paymentLink:        cleanUrl(cfg.paymentLink, ''),
     offerHeadline:      textValue(cfg.offerHeadline, 'Called & Clear is now open for enrollment.'),
     offerSubtext:       textValue(cfg.offerSubtext, 'Special pricing is available for training attendees only.'),
     offerBtnText:       textValue(cfg.offerBtnText, 'Enroll Now'),
@@ -1091,7 +1119,7 @@ function applyAdminContent() {
   const offerBtn    = document.querySelector('.btn-offer');
   if (offerStrong) offerStrong.textContent = CONFIG.offerHeadline;
   if (offerSpan)   offerSpan.textContent   = CONFIG.offerSubtext;
-  if (offerBtn)    { offerBtn.textContent  = CONFIG.offerBtnText; offerBtn.href = CONFIG.paymentLink; }
+  configureOfferButton(offerBtn);
 
 }
 
@@ -1496,8 +1524,7 @@ function startWebinarRoom() {
     }
   }
 
-  // Update offer link
-  document.querySelector('.btn-offer').href = CONFIG.paymentLink;
+  configureOfferButton(document.querySelector('.btn-offer'));
 
   // Attendee counter drift
   const countRange = Math.max(1, CONFIG.attendeeMax - CONFIG.attendeeMin + 1);
