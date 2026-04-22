@@ -461,6 +461,7 @@
     width: 100% !important;
     height: 100% !important;
     border: none !important;
+    pointer-events: none !important;
   }
 
   /* ── SWAP IN YOUR VIDEO: replace .video-placeholder with an <iframe> ── */
@@ -1307,11 +1308,91 @@ let chatIndex = 0;
 let roomInterval;
 let attendeeInterval;
 let roomSeconds = 0;
+let webinarPlayer = null;
+let videoFallbackTimer = null;
+let unmuteButtonShown = false;
+
+function createVideoOverlay(wrap, text, subtext, action) {
+  let overlay = document.getElementById('video-start-overlay');
+  if (!overlay) {
+    overlay = document.createElement('button');
+    overlay.id = 'video-start-overlay';
+    overlay.type = 'button';
+    overlay.style.cssText = 'position:absolute;inset:auto 24px 24px 24px;z-index:30;background:rgba(0,0,0,0.84);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:14px 18px;cursor:pointer;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;text-align:center;box-shadow:0 2px 18px rgba(0,0,0,0.45);';
+    wrap.appendChild(overlay);
+  }
+  overlay.innerHTML = '<strong style="display:block;font-size:15px;margin-bottom:4px;">' + text + '</strong><span style="display:block;font-size:12px;color:rgba(255,255,255,0.72);">' + subtext + '</span>';
+  overlay.onclick = action || null;
+  overlay.style.display = 'block';
+  return overlay;
+}
+
+function youtubeWatchUrl() {
+  return 'https://www.youtube.com/watch?v=' + encodeURIComponent(CONFIG.videoId || '');
+}
+
+function youtubeErrorMessage(code) {
+  if (code === 153) {
+    return 'YouTube blocked this local file preview. Open this webinar from http://localhost or your hosted website, not directly as a file.';
+  }
+  if (code === 101 || code === 150) {
+    return 'This YouTube video does not allow embedding. In YouTube, allow embedding or use a public/unlisted video that permits embeds.';
+  }
+  if (code === 100) {
+    return 'YouTube cannot find this video. Check the video ID saved in the admin.';
+  }
+  if (code === 2) {
+    return 'The saved YouTube video ID is not valid. Paste only the video ID or a normal YouTube URL in the admin.';
+  }
+  return 'YouTube could not start this video. Check the video ID and embed permissions.';
+}
+
+function hideVideoOverlay() {
+  const overlay = document.getElementById('video-start-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function addBroadcastShield(wrap) {
+  let shield = document.getElementById('video-broadcast-shield');
+  if (!shield) {
+    shield = document.createElement('div');
+    shield.id = 'video-broadcast-shield';
+    shield.setAttribute('aria-hidden', 'true');
+    shield.style.cssText = 'position:absolute;inset:0;z-index:20;background:transparent;cursor:default;';
+    wrap.appendChild(shield);
+  }
+  return shield;
+}
+
+function markVideoStarted(wrap, player) {
+  if (!roomStartTime) {
+    roomStartTime = Date.now();
+    roomSeconds = 0;
+  }
+  clearTimeout(videoFallbackTimer);
+  hideVideoOverlay();
+
+  if (player && !unmuteButtonShown) {
+    unmuteButtonShown = true;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.82);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:12px 28px;border-radius:8px;cursor:pointer;font-family:sans-serif;font-size:15px;font-weight:700;z-index:31;letter-spacing:0.3px;box-shadow:0 2px 12px rgba(0,0,0,0.4);';
+    btn.textContent = 'Click to unmute';
+    btn.onclick = function() {
+      player.unMute();
+      player.setVolume(100);
+      btn.remove();
+    };
+    wrap.appendChild(btn);
+  }
+}
 
 function startWebinarRoom() {
   clearInterval(roomInterval);
   clearInterval(attendeeInterval);
+  clearTimeout(videoFallbackTimer);
   chatIndex = 0;
+  unmuteButtonShown = false;
   document.getElementById('chat-messages').textContent = '';
   document.getElementById('offer-banner').classList.remove('visible');
   roomStartTime = null; // set by video onStateChange when playback actually begins
@@ -1328,44 +1409,64 @@ function startWebinarRoom() {
       playerDiv.id = 'yt-player';
       playerDiv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;';
       placeholder.replaceWith(playerDiv);
-
-      const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:10;';
-      wrap.appendChild(overlay);
+      addBroadcastShield(wrap);
 
       let _playerStarted = false;
 
       function _createPlayer() {
-        const player = new YT.Player('yt-player', {
+        const playerVars = {
+          autoplay: 1,
+          mute: 1,          // start muted — guaranteed autoplay, user unmutes below
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          iv_load_policy: 3,
+          modestbranding: 1,
+          rel: 0,
+          playsinline: 1,
+        };
+        if (location.protocol === 'http:' || location.protocol === 'https:') {
+          playerVars.origin = location.origin;
+        }
+
+        webinarPlayer = new YT.Player('yt-player', {
           width: '100%',
           height: '100%',
           videoId: CONFIG.videoId,
-          playerVars: {
-            autoplay: 1,
-            mute: 1,          // start muted — guaranteed autoplay, user unmutes below
-            controls: 0,
-            disablekb: 1,
-            fs: 0,
-            iv_load_policy: 3,
-            modestbranding: 1,
-            rel: 0,
-            playsinline: 1,
-          },
+          playerVars,
           events: {
-            onReady: function(e) { e.target.playVideo(); },
+            onReady: function(e) {
+              e.target.mute();
+              e.target.playVideo();
+              videoFallbackTimer = setTimeout(function() {
+                if (!roomStartTime) {
+                  createVideoOverlay(
+                    wrap,
+                    'Start the training video',
+                    'Your browser blocked autoplay. Click once to begin. Chat and the offer banner will sync from the video start.',
+                    function() {
+                      hideVideoOverlay();
+                      e.target.mute();
+                      e.target.playVideo();
+                    }
+                  );
+                }
+              }, 3500);
+            },
             onStateChange: function(e) {
               if (e.data === YT.PlayerState.PLAYING && !_playerStarted) {
                 _playerStarted = true;
-                roomStartTime = Date.now();
-                roomSeconds = 0;
-                // Always show unmute button (video starts muted for autoplay reliability)
-                const btn = document.createElement('div');
-                btn.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.82);color:#fff;padding:12px 28px;border-radius:8px;cursor:pointer;font-family:sans-serif;font-size:15px;font-weight:700;z-index:20;letter-spacing:0.3px;box-shadow:0 2px 12px rgba(0,0,0,0.4);';
-                btn.textContent = '🔊 Click to unmute';
-                btn.onclick = function() { e.target.unMute(); e.target.setVolume(100); btn.remove(); };
-                wrap.appendChild(btn);
+                markVideoStarted(wrap, e.target);
               }
-            }
+            },
+            onError: function(e) {
+              createVideoOverlay(
+                wrap,
+                'Video cannot play',
+                youtubeErrorMessage(e.data) + ' Watch directly: ' + youtubeWatchUrl(),
+                null
+              );
+            },
           }
         });
       }
@@ -1381,8 +1482,18 @@ function startWebinarRoom() {
         }
       }
     }
-  } else {
+  } else if (CONFIG.videoId && document.getElementById('yt-player')) {
     roomStartTime = Date.now();
+  } else {
+    const wrap = document.querySelector('.video-wrap');
+    if (wrap) {
+      createVideoOverlay(
+        wrap,
+        'Add your webinar video',
+        'Open the admin, paste a YouTube video ID, and save. Chat and offer timing begin when the video starts.',
+        null
+      );
+    }
   }
 
   // Update offer link

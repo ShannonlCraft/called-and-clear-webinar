@@ -1376,7 +1376,8 @@ function updateVideoPreview() {
 }
 function previewScreen(suffix) {
   saveAll();
-  window.open('called-and-clear-webinar.html' + suffix, '_blank');
+  const base = location.protocol === 'file:' ? 'http://localhost:8787/' : '';
+  window.open(base + 'called-and-clear-webinar.html' + suffix, '_blank');
 }
 </script>
 </body>
